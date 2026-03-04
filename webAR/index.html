@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>AR.js Raycast Example</title>
+  <title>AR.js Raycast Spawn Example</title>
 
   <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
@@ -18,10 +18,9 @@
   arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
 >
   
-  <!-- HIRO Marker -->
   <a-marker preset="hiro" id="hiroMarker">
 
-    <!-- Box that appears on marker -->
+    <!-- Target Box -->
     <a-box
       id="targetBox"
       position="0 0.5 0"
@@ -40,9 +39,10 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-  const sceneEl = document.querySelector("a-scene");
   const cameraEl = document.querySelector("[camera]");
   const boxEl = document.querySelector("#targetBox");
+  const markerEl = document.querySelector("#hiroMarker");
+  const sceneEl = document.querySelector("a-scene");
 
   const raycaster = new THREE.Raycaster();
 
@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const camera = cameraEl.object3D;
     const box = boxEl.object3D;
 
-    // Direction straight forward from camera
+    // Forward direction from camera
     const direction = new THREE.Vector3(0, 0, -1);
     direction.applyQuaternion(camera.quaternion);
 
@@ -63,18 +63,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (intersects.length > 0) {
 
-      const worldPosition = new THREE.Vector3();
-      box.getWorldPosition(worldPosition);
+      const hitPoint = intersects[0].point;
 
       console.log(
-        "hit",
-        "box world coordinates:",
+        "hit at:",
         {
-          x: worldPosition.x.toFixed(3),
-          y: worldPosition.y.toFixed(3),
-          z: worldPosition.z.toFixed(3)
+          x: hitPoint.x.toFixed(3),
+          y: hitPoint.y.toFixed(3),
+          z: hitPoint.z.toFixed(3)
         }
       );
+
+      // Convert world position into marker local space
+      const localPoint = markerEl.object3D.worldToLocal(hitPoint.clone());
+
+      // Create cylinder entity
+      const cylinder = document.createElement("a-cylinder");
+
+      cylinder.setAttribute("radius", 0.1);
+      cylinder.setAttribute("height", 0.3);
+      cylinder.setAttribute("color", "blue");
+
+      cylinder.setAttribute(
+        "position",
+        `${localPoint.x} ${localPoint.y} ${localPoint.z}`
+      );
+
+      markerEl.appendChild(cylinder);
     }
   });
 
