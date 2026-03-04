@@ -42,7 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const cameraEl = document.querySelector("[camera]");
   const boxEl = document.querySelector("#targetBox");
   const markerEl = document.querySelector("#hiroMarker");
-  const sceneEl = document.querySelector("a-scene");
 
   const raycaster = new THREE.Raycaster();
 
@@ -63,21 +62,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (intersects.length > 0) {
 
-      const hitPoint = intersects[0].point;
+      const hit = intersects[0];
 
-      console.log(
-        "hit at:",
-        {
-          x: hitPoint.x.toFixed(3),
-          y: hitPoint.y.toFixed(3),
-          z: hitPoint.z.toFixed(3)
-        }
+      // 🔹 Store distance
+      const distance = hit.distance;
+
+      console.log("hit");
+      console.log("stored distance:", distance.toFixed(3));
+
+      // 🔹 Compute new position using stored distance
+      const spawnPosition = camera.position.clone()
+        .add(direction.clone().multiplyScalar(distance));
+
+      // Convert to marker local space
+      const localPosition = markerEl.object3D.worldToLocal(
+        spawnPosition.clone()
       );
 
-      // Convert world position into marker local space
-      const localPoint = markerEl.object3D.worldToLocal(hitPoint.clone());
-
-      // Create cylinder entity
+      // Create cylinder
       const cylinder = document.createElement("a-cylinder");
 
       cylinder.setAttribute("radius", 0.1);
@@ -86,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       cylinder.setAttribute(
         "position",
-        `${localPoint.x} ${localPoint.y} ${localPoint.z}`
+        `${localPosition.x} ${localPosition.y} ${localPosition.z}`
       );
 
       markerEl.appendChild(cylinder);
@@ -98,3 +100,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
