@@ -76,32 +76,33 @@ const crosshair = document.getElementById("crosshair");
 const hint = document.getElementById("hint");
 const camera = document.getElementById("camera");
 
-btn.addEventListener("click", async () => {
-
-  // iOS permission request
-  if (typeof DeviceOrientationEvent !== "undefined" &&
-      typeof DeviceOrientationEvent.requestPermission === "function") {
-    try {
-      const res = await DeviceOrientationEvent.requestPermission();
-      if (res !== "granted") {
-        alert("Motion permission denied");
-        return;
-      }
-    } catch (e) {
-      alert("Permission error");
-      return;
-    }
-  }
-
-  // enable camera controls AFTER permission
+const proceed = () => {
   camera.setAttribute("look-controls", "enabled: true");
-
-  // show UI
   btn.style.display = "none";
   crosshair.style.display = "block";
   hint.style.display = "block";
-
   startGame();
+};
+
+// Synchronous click handler preserves iOS user gesture context
+btn.addEventListener("click", () => {
+
+  if (
+    typeof DeviceOrientationEvent !== "undefined" &&
+    typeof DeviceOrientationEvent.requestPermission === "function"
+  ) {
+    // iOS — must call requestPermission() synchronously inside a user gesture
+    DeviceOrientationEvent.requestPermission()
+      .then(res => {
+        if (res === "granted") proceed();
+        else alert("Motion permission denied");
+      })
+      .catch(() => alert("Permission error"));
+  } else {
+    // Android / desktop — no permission prompt needed
+    proceed();
+  }
+
 });
 
 // ─────────────────────────────
@@ -142,7 +143,7 @@ function spawnBox(){
 function update(){
   requestAnimationFrame(update);
 
-  boxes.forEach((b, i)=>{
+  boxes.forEach((b, i) => {
     if(!b.alive) return;
 
     const pos = b.el.object3D.position;
@@ -154,7 +155,7 @@ function update(){
     // remove if too close
     if(pos.z > 1){
       world.removeChild(b.el);
-      boxes.splice(i,1);
+      boxes.splice(i, 1);
     }
   });
 }
@@ -168,13 +169,13 @@ function shoot(){
   const origin = new THREE.Vector3();
   camObj.getWorldPosition(origin);
 
-  const direction = new THREE.Vector3(0,0,-1);
+  const direction = new THREE.Vector3(0, 0, -1);
   direction.applyQuaternion(camObj.quaternion);
 
   raycaster.set(origin, direction);
 
   const intersects = raycaster.intersectObjects(
-    boxes.map(b=>b.el.object3D),
+    boxes.map(b => b.el.object3D),
     true
   );
 
@@ -186,16 +187,19 @@ function shoot(){
   }
 }
 
-// input
+// desktop click to shoot
 document.addEventListener("click", shoot);
-document.addEventListener("touchstart", e=>{
-  e.preventDefault();
-  shoot();
-},{passive:false});
 
 // start game loop
 function startGame(){
-  setInterval(()=>{
+  // touchstart listener added here so it doesn't interfere
+  // with the iOS permission dialog
+  document.addEventListener("touchstart", e => {
+    e.preventDefault();
+    shoot();
+  }, { passive: false });
+
+  setInterval(() => {
     if(boxes.length < 6) spawnBox();
   }, 1500);
 
