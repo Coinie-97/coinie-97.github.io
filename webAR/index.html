@@ -18,6 +18,7 @@
       border:2px solid white;
       border-radius:50%;
       z-index:10;
+      display:none;
     }
 
     #hint {
@@ -28,11 +29,27 @@
       color:white;
       font-size:12px;
       z-index:10;
+      display:none;
+    }
+
+    #startBtn {
+      position:fixed;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      padding:18px 28px;
+      font-size:20px;
+      z-index:100;
+      border:none;
+      border-radius:8px;
+      background:#222;
+      color:white;
     }
   </style>
 </head>
 
 <body>
+
+<button id="startBtn">Start AR</button>
 
 <div id="crosshair"></div>
 <div id="hint">Move phone to aim · Tap to shoot</div>
@@ -42,28 +59,62 @@
   vr-mode-ui="enabled: false"
   renderer="logarithmicDepthBuffer: true;">
 
-  <!-- Camera (uses gyro automatically) -->
-  <a-entity id="camera" camera look-controls position="0 1.6 0"></a-entity>
+  <!-- Camera (gyro will activate after permission) -->
+  <a-entity id="camera" camera look-controls="enabled: false" position="0 1.6 0"></a-entity>
 
-  <!-- World container -->
+  <!-- World -->
   <a-entity id="world"></a-entity>
 
 </a-scene>
 
 <script>
 // ─────────────────────────────
-// WORLD SETUP
+// START BUTTON + PERMISSION
 // ─────────────────────────────
-const world = document.getElementById("world");
+const btn = document.getElementById("startBtn");
+const crosshair = document.getElementById("crosshair");
+const hint = document.getElementById("hint");
 const camera = document.getElementById("camera");
 
+btn.addEventListener("click", async () => {
+
+  // iOS permission request
+  if (typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function") {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== "granted") {
+        alert("Motion permission denied");
+        return;
+      }
+    } catch (e) {
+      alert("Permission error");
+      return;
+    }
+  }
+
+  // enable camera controls AFTER permission
+  camera.setAttribute("look-controls", "enabled: true");
+
+  // show UI
+  btn.style.display = "none";
+  crosshair.style.display = "block";
+  hint.style.display = "block";
+
+  startGame();
+});
+
+// ─────────────────────────────
+// GAME LOGIC
+// ─────────────────────────────
+const world = document.getElementById("world");
 let boxes = [];
 
-// spawn box in front of camera
+// spawn boxes in front of player
 function spawnBox(){
   const box = document.createElement("a-box");
 
-  const angle = (Math.random() - 0.5) * Math.PI; // spread horizontally
+  const angle = (Math.random() - 0.5) * Math.PI;
   const dist  = 3 + Math.random() * 3;
 
   const x = Math.sin(angle) * dist;
@@ -87,14 +138,7 @@ function spawnBox(){
   });
 }
 
-// spawn loop
-setInterval(()=>{
-  if(boxes.length < 6) spawnBox();
-}, 1500);
-
-// ─────────────────────────────
-// UPDATE LOOP (movement)
-// ─────────────────────────────
+// movement loop
 function update(){
   requestAnimationFrame(update);
 
@@ -103,12 +147,11 @@ function update(){
 
     const pos = b.el.object3D.position;
 
-    // move toward player
-    pos.z += b.vz;
     pos.x += b.vx;
     pos.y += b.vy;
+    pos.z += b.vz;
 
-    // simple bounds
+    // remove if too close
     if(pos.z > 1){
       world.removeChild(b.el);
       boxes.splice(i,1);
@@ -116,11 +159,7 @@ function update(){
   });
 }
 
-update();
-
-// ─────────────────────────────
-// SHOOTING (TRUE 3D RAYCAST)
-// ─────────────────────────────
+// shooting (real raycast)
 function shoot(){
   const raycaster = new THREE.Raycaster();
 
@@ -153,6 +192,15 @@ document.addEventListener("touchstart", e=>{
   e.preventDefault();
   shoot();
 },{passive:false});
+
+// start game loop
+function startGame(){
+  setInterval(()=>{
+    if(boxes.length < 6) spawnBox();
+  }, 1500);
+
+  update();
+}
 
 </script>
 
