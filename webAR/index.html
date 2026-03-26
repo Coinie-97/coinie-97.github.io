@@ -1,103 +1,271 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>AR.js Raycast Spawn Example</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>3D Gyro Shooter</title>
 
-  <!-- A-Frame -->
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-
-  <!-- AR.js -->
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#555; overflow:hidden; width:100vw; height:100vh; touch-action:none; }
+#vid { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
+#c   { position:fixed; inset:0; z-index:10; }
+#hint {
+  position:fixed; bottom:20px; left:0; right:0;
+  color:rgba(255,255,255,0.4); font-size:11px;
+  text-align:center; z-index:20;
+}
+</style>
 </head>
 
-<body style="margin:0; overflow:hidden;">
-
-<a-scene
-  embedded
-  arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;"
->
-  
-  <a-marker preset="hiro" id="hiroMarker">
-
-    <!-- Target Box -->
-    <a-box
-      id="targetBox"
-      position="0 0.5 0"
-      depth="0.5"
-      height="0.5"
-      width="0.5"
-      color="red">
-    </a-box>
-
-  </a-marker>
-
-  <a-entity camera></a-entity>
-
-</a-scene>
+<body>
+<video id="vid" autoplay playsinline muted></video>
+<canvas id="c"></canvas>
+<div id="hint">Move phone to aim · Tap to shoot</div>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
+// ── CANVAS ─────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
 
-  const cameraEl = document.querySelector("[camera]");
-  const boxEl = document.querySelector("#targetBox");
-  const markerEl = document.querySelector("#hiroMarker");
+let W, H;
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
 
-  const raycaster = new THREE.Raycaster();
+// ── CAMERA FEED ────────────────────────
+(async function(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    document.getElementById('vid').srcObject = stream;
+  }catch(e){ console.warn(e); }
+})();
 
-  window.addEventListener("click", () => {
+// ── GYRO ───────────────────────────────
+let rawG=0, rawB=0;
+let baseG=0, baseB=0;
+let smoothG=0, smoothB=0;
 
-    console.log("raycast fired");
+const LERP = 0.08;
 
-    const camera = cameraEl.object3D;
-    const box = boxEl.object3D;
+function wrap(d, r){ while(d>r/2)d-=r; while(d<-r/2)d+=r; return d; }
 
-    // Forward direction from camera
-    const direction = new THREE.Vector3(0, 0, -1);
-    direction.applyQuaternion(camera.quaternion);
+window.addEventListener('deviceorientation', e=>{
+  if(e.gamma==null) return;
 
-    raycaster.set(camera.position, direction);
+  rawG = e.gamma;
+  rawB = e.beta;
 
-    const intersects = raycaster.intersectObject(box, true);
+  if(!baseG && !baseB){
+    baseG = rawG;
+    baseB = rawB;
+  }
+}, true);
 
-    if (intersects.length > 0) {
+function updateGyro(){
+  let dg = wrap(rawG - baseG, 180);
+  let db = wrap(rawB - baseB, 360);
 
-      const hit = intersects[0];
+  smoothG += (dg - smoothG)*LERP;
+  smoothB += (db - smoothB)*LERP;
+}
 
-      // 🔹 Store distance
-      const distance = hit.distance;
+// ── 3D PROJECTION ──────────────────────
+function toScreen(wx, wy, wz){
+  const yaw   = smoothG * Math.PI/180;
+  const pitch = smoothB * Math.PI/180;
 
-      console.log("hit");
-      console.log("stored distance:", distance.toFixed(3));
+  // Y rotation
+  let x = wx * Math.cos(yaw) - wz * Math.sin(yaw);
+  let z = wx * Math.sin(yaw) + wz * Math.cos(yaw);
 
-      // 🔹 Compute new position using stored distance
-      const spawnPosition = camera.position.clone()
-        .add(direction.clone().multiplyScalar(distance));
+  // X rotation
+  let y = wy * Math.cos(pitch) - z * Math.sin(pitch);
+  z     = wy * Math.sin(pitch) + z * Math.cos(pitch);
 
-      // Convert to marker local space
-      const localPosition = markerEl.object3D.worldToLocal(
-        spawnPosition.clone()
-      );
+  const fov = 500;
+  const scale = fov / (fov + z);
 
-      // Create cylinder
-      const cylinder = document.createElement("a-cylinder");
+  return {
+    sx: W/2 + x * scale,
+    sy: H/2 + y * scale,
+    scale,
+    visible: z > -fov
+  };
+}
 
-      cylinder.setAttribute("radius", 0.1);
-      cylinder.setAttribute("height", 0.3);
-      cylinder.setAttribute("color", "blue");
+// ── BOXES ──────────────────────────────
+let boxes = [];
+let lastSpawn = 0;
 
-      cylinder.setAttribute(
-        "position",
-        `${localPosition.x} ${localPosition.y} ${localPosition.z}`
-      );
+function spawnBox(){
+  const side = Math.random() > 0.5 ? -1 : 1;
 
-      markerEl.appendChild(cylinder);
-    }
+  boxes.push({
+    wx: side * W * 0.8,
+    wy: (Math.random()-0.5)*H*0.6,
+    wz: 400 + Math.random()*600,
+
+    vwx: side * -0.5,
+    vwy: -0.05,
+    vwz: -0.4,
+
+    size: 60 + Math.random()*20,
+
+    alive:true,
+    falling:false,
+    fsx:0,fsy:0,fvy:0,fang:0,falpha:1
+  });
+}
+
+// ── PARTICLES ──────────────────────────
+let particles=[];
+
+function spawnHit(x,y){
+  for(let i=0;i<12;i++){
+    const a=Math.random()*Math.PI*2;
+    const sp=2+Math.random()*4;
+    particles.push({
+      x,y,
+      vx:Math.cos(a)*sp,
+      vy:Math.sin(a)*sp-2,
+      life:1
+    });
+  }
+}
+
+function drawParticles(){
+  particles = particles.filter(p=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.2;
+    p.life-=0.04;
+
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle="#aaa";
+    ctx.fillRect(p.x,p.y,3,3);
+    ctx.globalAlpha=1;
+
+    return p.life>0;
+  });
+}
+
+// ── SHOOT ──────────────────────────────
+function fire(){
+  const cx=W/2, cy=H/2;
+
+  const hit = boxes.find(b=>{
+    if(!b.alive || b.falling) return false;
+
+    const {sx,sy,scale} = toScreen(b.wx,b.wy,b.wz);
+    const size = b.size * scale;
+
+    return Math.abs(sx-cx)<size/2 &&
+           Math.abs(sy-cy)<size/2;
   });
 
-});
-</script>
+  if(hit){
+    const {sx,sy} = toScreen(hit.wx,hit.wy,hit.wz);
 
+    hit.alive=false;
+    hit.falling=true;
+    hit.fsx=sx;
+    hit.fsy=sy;
+    hit.fvy=-5;
+
+    spawnHit(cx,cy);
+  }
+}
+
+document.addEventListener('click', fire);
+document.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  fire();
+},{passive:false});
+
+// ── CROSSHAIR ──────────────────────────
+function drawCrosshair(){
+  const cx=W/2, cy=H/2;
+
+  ctx.strokeStyle="white";
+  ctx.beginPath();
+  ctx.arc(cx,cy,20,0,Math.PI*2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx-10,cy); ctx.lineTo(cx+10,cy);
+  ctx.moveTo(cx,cy-10); ctx.lineTo(cx,cy+10);
+  ctx.stroke();
+}
+
+// ── LOOP ───────────────────────────────
+function loop(){
+  requestAnimationFrame(loop);
+  ctx.clearRect(0,0,W,H);
+
+  updateGyro();
+
+  const now = Date.now();
+  if(boxes.length < 4 && now-lastSpawn>2000){
+    spawnBox();
+    lastSpawn = now;
+  }
+
+  for(let i=boxes.length-1;i>=0;i--){
+    const b=boxes[i];
+
+    if(b.falling){
+      b.fsy+=b.fvy;
+      b.fvy+=0.5;
+      b.falpha-=0.02;
+
+      if(b.falpha<=0){
+        boxes.splice(i,1);
+        continue;
+      }
+
+      ctx.globalAlpha=b.falpha;
+      ctx.fillStyle="#777";
+      ctx.fillRect(b.fsx,b.fsy,40,40);
+      ctx.globalAlpha=1;
+      continue;
+    }
+
+    if(!b.alive){
+      boxes.splice(i,1);
+      continue;
+    }
+
+    // movement
+    b.wx+=b.vwx;
+    b.wy+=b.vwy;
+    b.wz+=b.vwz;
+
+    // culling
+    if(b.wz < -200 || b.wz > 2000){
+      boxes.splice(i,1);
+      continue;
+    }
+
+    const {sx,sy,scale,visible} = toScreen(b.wx,b.wy,b.wz);
+    if(!visible) continue;
+
+    const size = b.size * scale;
+
+    ctx.fillStyle="#666";
+    ctx.fillRect(sx-size/2, sy-size/2, size, size);
+    ctx.strokeStyle="#aaa";
+    ctx.strokeRect(sx-size/2, sy-size/2, size, size);
+  }
+
+  drawParticles();
+  drawCrosshair();
+}
+
+loop();
+</script>
 </body>
 </html>
-
