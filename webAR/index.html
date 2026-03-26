@@ -1,271 +1,160 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>3D Gyro Shooter</title>
+  <meta charset="utf-8">
+  <title>Markerless AR Shooter</title>
 
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#555; overflow:hidden; width:100vw; height:100vh; touch-action:none; }
-#vid { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; }
-#c   { position:fixed; inset:0; z-index:10; }
-#hint {
-  position:fixed; bottom:20px; left:0; right:0;
-  color:rgba(255,255,255,0.4); font-size:11px;
-  text-align:center; z-index:20;
-}
-</style>
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
+  <style>
+    body { margin:0; overflow:hidden; }
+
+    #crosshair {
+      position:fixed;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      width:40px; height:40px;
+      border:2px solid white;
+      border-radius:50%;
+      z-index:10;
+    }
+
+    #hint {
+      position:fixed;
+      bottom:20px;
+      width:100%;
+      text-align:center;
+      color:white;
+      font-size:12px;
+      z-index:10;
+    }
+  </style>
 </head>
 
 <body>
-<video id="vid" autoplay playsinline muted></video>
-<canvas id="c"></canvas>
+
+<div id="crosshair"></div>
 <div id="hint">Move phone to aim · Tap to shoot</div>
 
+<a-scene
+  embedded
+  vr-mode-ui="enabled: false"
+  renderer="logarithmicDepthBuffer: true;">
+
+  <!-- Camera (uses gyro automatically) -->
+  <a-entity id="camera" camera look-controls position="0 1.6 0"></a-entity>
+
+  <!-- World container -->
+  <a-entity id="world"></a-entity>
+
+</a-scene>
+
 <script>
-// ── CANVAS ─────────────────────────────
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
+// ─────────────────────────────
+// WORLD SETUP
+// ─────────────────────────────
+const world = document.getElementById("world");
+const camera = document.getElementById("camera");
 
-let W, H;
-function resize(){
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// ── CAMERA FEED ────────────────────────
-(async function(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    document.getElementById('vid').srcObject = stream;
-  }catch(e){ console.warn(e); }
-})();
-
-// ── GYRO ───────────────────────────────
-let rawG=0, rawB=0;
-let baseG=0, baseB=0;
-let smoothG=0, smoothB=0;
-
-const LERP = 0.08;
-
-function wrap(d, r){ while(d>r/2)d-=r; while(d<-r/2)d+=r; return d; }
-
-window.addEventListener('deviceorientation', e=>{
-  if(e.gamma==null) return;
-
-  rawG = e.gamma;
-  rawB = e.beta;
-
-  if(!baseG && !baseB){
-    baseG = rawG;
-    baseB = rawB;
-  }
-}, true);
-
-function updateGyro(){
-  let dg = wrap(rawG - baseG, 180);
-  let db = wrap(rawB - baseB, 360);
-
-  smoothG += (dg - smoothG)*LERP;
-  smoothB += (db - smoothB)*LERP;
-}
-
-// ── 3D PROJECTION ──────────────────────
-function toScreen(wx, wy, wz){
-  const yaw   = smoothG * Math.PI/180;
-  const pitch = smoothB * Math.PI/180;
-
-  // Y rotation
-  let x = wx * Math.cos(yaw) - wz * Math.sin(yaw);
-  let z = wx * Math.sin(yaw) + wz * Math.cos(yaw);
-
-  // X rotation
-  let y = wy * Math.cos(pitch) - z * Math.sin(pitch);
-  z     = wy * Math.sin(pitch) + z * Math.cos(pitch);
-
-  const fov = 500;
-  const scale = fov / (fov + z);
-
-  return {
-    sx: W/2 + x * scale,
-    sy: H/2 + y * scale,
-    scale,
-    visible: z > -fov
-  };
-}
-
-// ── BOXES ──────────────────────────────
 let boxes = [];
-let lastSpawn = 0;
 
+// spawn box in front of camera
 function spawnBox(){
-  const side = Math.random() > 0.5 ? -1 : 1;
+  const box = document.createElement("a-box");
+
+  const angle = (Math.random() - 0.5) * Math.PI; // spread horizontally
+  const dist  = 3 + Math.random() * 3;
+
+  const x = Math.sin(angle) * dist;
+  const z = -Math.cos(angle) * dist;
+  const y = 1 + Math.random() * 1.5;
+
+  box.setAttribute("position", `${x} ${y} ${z}`);
+  box.setAttribute("depth", "0.4");
+  box.setAttribute("height", "0.4");
+  box.setAttribute("width", "0.4");
+  box.setAttribute("color", "#666");
+
+  world.appendChild(box);
 
   boxes.push({
-    wx: side * W * 0.8,
-    wy: (Math.random()-0.5)*H*0.6,
-    wz: 400 + Math.random()*600,
-
-    vwx: side * -0.5,
-    vwy: -0.05,
-    vwz: -0.4,
-
-    size: 60 + Math.random()*20,
-
-    alive:true,
-    falling:false,
-    fsx:0,fsy:0,fvy:0,fang:0,falpha:1
+    el: box,
+    vx: (Math.random()-0.5)*0.01,
+    vy: (Math.random()-0.5)*0.01,
+    vz: 0.01 + Math.random()*0.01,
+    alive: true
   });
 }
 
-// ── PARTICLES ──────────────────────────
-let particles=[];
+// spawn loop
+setInterval(()=>{
+  if(boxes.length < 6) spawnBox();
+}, 1500);
 
-function spawnHit(x,y){
-  for(let i=0;i<12;i++){
-    const a=Math.random()*Math.PI*2;
-    const sp=2+Math.random()*4;
-    particles.push({
-      x,y,
-      vx:Math.cos(a)*sp,
-      vy:Math.sin(a)*sp-2,
-      life:1
-    });
+// ─────────────────────────────
+// UPDATE LOOP (movement)
+// ─────────────────────────────
+function update(){
+  requestAnimationFrame(update);
+
+  boxes.forEach((b, i)=>{
+    if(!b.alive) return;
+
+    const pos = b.el.object3D.position;
+
+    // move toward player
+    pos.z += b.vz;
+    pos.x += b.vx;
+    pos.y += b.vy;
+
+    // simple bounds
+    if(pos.z > 1){
+      world.removeChild(b.el);
+      boxes.splice(i,1);
+    }
+  });
+}
+
+update();
+
+// ─────────────────────────────
+// SHOOTING (TRUE 3D RAYCAST)
+// ─────────────────────────────
+function shoot(){
+  const raycaster = new THREE.Raycaster();
+
+  const camObj = camera.object3D;
+
+  const origin = new THREE.Vector3();
+  camObj.getWorldPosition(origin);
+
+  const direction = new THREE.Vector3(0,0,-1);
+  direction.applyQuaternion(camObj.quaternion);
+
+  raycaster.set(origin, direction);
+
+  const intersects = raycaster.intersectObjects(
+    boxes.map(b=>b.el.object3D),
+    true
+  );
+
+  if(intersects.length > 0){
+    const hit = intersects[0].object.el;
+
+    world.removeChild(hit);
+    boxes = boxes.filter(b => b.el !== hit);
   }
 }
 
-function drawParticles(){
-  particles = particles.filter(p=>{
-    p.x+=p.vx;
-    p.y+=p.vy;
-    p.vy+=0.2;
-    p.life-=0.04;
-
-    ctx.globalAlpha=p.life;
-    ctx.fillStyle="#aaa";
-    ctx.fillRect(p.x,p.y,3,3);
-    ctx.globalAlpha=1;
-
-    return p.life>0;
-  });
-}
-
-// ── SHOOT ──────────────────────────────
-function fire(){
-  const cx=W/2, cy=H/2;
-
-  const hit = boxes.find(b=>{
-    if(!b.alive || b.falling) return false;
-
-    const {sx,sy,scale} = toScreen(b.wx,b.wy,b.wz);
-    const size = b.size * scale;
-
-    return Math.abs(sx-cx)<size/2 &&
-           Math.abs(sy-cy)<size/2;
-  });
-
-  if(hit){
-    const {sx,sy} = toScreen(hit.wx,hit.wy,hit.wz);
-
-    hit.alive=false;
-    hit.falling=true;
-    hit.fsx=sx;
-    hit.fsy=sy;
-    hit.fvy=-5;
-
-    spawnHit(cx,cy);
-  }
-}
-
-document.addEventListener('click', fire);
-document.addEventListener('touchstart', e=>{
+// input
+document.addEventListener("click", shoot);
+document.addEventListener("touchstart", e=>{
   e.preventDefault();
-  fire();
+  shoot();
 },{passive:false});
 
-// ── CROSSHAIR ──────────────────────────
-function drawCrosshair(){
-  const cx=W/2, cy=H/2;
-
-  ctx.strokeStyle="white";
-  ctx.beginPath();
-  ctx.arc(cx,cy,20,0,Math.PI*2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(cx-10,cy); ctx.lineTo(cx+10,cy);
-  ctx.moveTo(cx,cy-10); ctx.lineTo(cx,cy+10);
-  ctx.stroke();
-}
-
-// ── LOOP ───────────────────────────────
-function loop(){
-  requestAnimationFrame(loop);
-  ctx.clearRect(0,0,W,H);
-
-  updateGyro();
-
-  const now = Date.now();
-  if(boxes.length < 4 && now-lastSpawn>2000){
-    spawnBox();
-    lastSpawn = now;
-  }
-
-  for(let i=boxes.length-1;i>=0;i--){
-    const b=boxes[i];
-
-    if(b.falling){
-      b.fsy+=b.fvy;
-      b.fvy+=0.5;
-      b.falpha-=0.02;
-
-      if(b.falpha<=0){
-        boxes.splice(i,1);
-        continue;
-      }
-
-      ctx.globalAlpha=b.falpha;
-      ctx.fillStyle="#777";
-      ctx.fillRect(b.fsx,b.fsy,40,40);
-      ctx.globalAlpha=1;
-      continue;
-    }
-
-    if(!b.alive){
-      boxes.splice(i,1);
-      continue;
-    }
-
-    // movement
-    b.wx+=b.vwx;
-    b.wy+=b.vwy;
-    b.wz+=b.vwz;
-
-    // culling
-    if(b.wz < -200 || b.wz > 2000){
-      boxes.splice(i,1);
-      continue;
-    }
-
-    const {sx,sy,scale,visible} = toScreen(b.wx,b.wy,b.wz);
-    if(!visible) continue;
-
-    const size = b.size * scale;
-
-    ctx.fillStyle="#666";
-    ctx.fillRect(sx-size/2, sy-size/2, size, size);
-    ctx.strokeStyle="#aaa";
-    ctx.strokeRect(sx-size/2, sy-size/2, size, size);
-  }
-
-  drawParticles();
-  drawCrosshair();
-}
-
-loop();
 </script>
+
 </body>
 </html>
