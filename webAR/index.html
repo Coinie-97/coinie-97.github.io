@@ -10,13 +10,23 @@
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      position: fixed;
+      overscroll-behavior: none;
+    }
+
     body {
       background: #0a0a0a;
-      overflow: hidden;
       font-family: 'Press Start 2P', monospace;
       touch-action: none;
       -webkit-user-select: none;
       user-select: none;
+      -webkit-overflow-scrolling: none;
     }
 
     #container {
@@ -234,10 +244,13 @@
     y: 0,
     targetX: 0,
     targetY: 0,
-    smoothing: 0.15,
+    smoothing: 0.2,
     calibratedBeta: 0,
     calibratedGamma: 0,
-    sensitivity: 3.5,
+    sensitivity: 4.5,
+    // Range limits for movement (in degrees)
+    maxTiltX: 30,  // Max tilt left/right
+    maxTiltY: 30,  // Max tilt forward/back
   };
 
   let gyroEnabled = false;
@@ -268,20 +281,27 @@
     const gamma = event.gamma || 0; // Left-to-right tilt (-90 to 90)
 
     // Calculate relative movement from calibrated position
-    const deltaBeta = beta - reticle.calibratedBeta;
-    const deltaGamma = gamma - reticle.calibratedGamma;
+    let deltaBeta = beta - reticle.calibratedBeta;
+    let deltaGamma = gamma - reticle.calibratedGamma;
+
+    // Clamp the tilt range to prevent extreme movements
+    deltaBeta = Math.max(-reticle.maxTiltY, Math.min(reticle.maxTiltY, deltaBeta));
+    deltaGamma = Math.max(-reticle.maxTiltX, Math.min(reticle.maxTiltX, deltaGamma));
 
     // Map tilt to screen coordinates
     const W = canvas.width;
     const H = canvas.height;
 
-    // Gamma controls X (left-right tilt)
-    reticle.targetX = (W / 2) + (deltaGamma * reticle.sensitivity);
-    
-    // Beta controls Y (front-back tilt)
-    reticle.targetY = (H / 2) + (deltaBeta * reticle.sensitivity);
+    // Normalize delta to 0-1 range, then map to screen
+    const normalizedX = (deltaGamma + reticle.maxTiltX) / (reticle.maxTiltX * 2);
+    const normalizedY = (deltaBeta + reticle.maxTiltY) / (reticle.maxTiltY * 2);
 
-    // Clamp to screen bounds
+    // Map to full screen with some padding
+    const padding = 50;
+    reticle.targetX = padding + normalizedX * (W - padding * 2);
+    reticle.targetY = padding + normalizedY * (H - padding * 2);
+
+    // Final clamp to screen bounds
     reticle.targetX = Math.max(0, Math.min(W, reticle.targetX));
     reticle.targetY = Math.max(0, Math.min(H, reticle.targetY));
   }
@@ -1227,16 +1247,21 @@
     const gyroGranted = await requestGyroPermission();
     
     if (gyroGranted) {
-      // Set up orientation listener
-      window.addEventListener('deviceorientation', handleOrientation, true);
+      // Set up orientation listener with preventDefault
+      const orientationHandler = (event) => {
+        event.preventDefault();
+        handleOrientation(event);
+      };
+      
+      window.addEventListener('deviceorientation', orientationHandler, { passive: false });
       
       // Calibrate on first orientation event
       const calibrate = (event) => {
+        event.preventDefault();
         calibrateGyro(event);
-        window.removeEventListener('deviceorientation', calibrate);
         gyroEnabled = true;
       };
-      window.addEventListener('deviceorientation', calibrate, { once: true });
+      window.addEventListener('deviceorientation', calibrate, { once: true, passive: false });
     } else {
       // Fallback to center position if gyro not available
       reticle.x = canvas.width / 2;
