@@ -38,7 +38,7 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      cursor: crosshair;
+      cursor: none;
     }
 
     /* ── Start Screen ─────────────────────────── */
@@ -176,15 +176,16 @@
         <div class="logo-sub">★ AR EDITION ★</div>
       </div>
       <div class="instructions">
-        🎯 TAP THE DUCKS TO SHOOT<br>
+        🎯 TILT PHONE TO AIM RETICLE<br>
+        📱 TAP SCREEN TO SHOOT<br>
         💀 3 MISSES = GAME OVER<br>
         ⚡ ROUNDS GET FASTER<br>
         🏆 BEAT YOUR HIGH SCORE
       </div>
       <button id="startBtn">▶ START GAME</button>
       <div class="cam-note">
-        Camera access required for AR mode.<br>
-        Allow camera permission when prompted.
+        Camera & gyroscope access required.<br>
+        Allow permissions when prompted.
       </div>
     </div>
   </div>
@@ -223,6 +224,143 @@
       --dur:${1.5 + Math.random()*2.5}s;
     `;
     starField.appendChild(s);
+  }
+
+  /* ═══════════════════════════════════════
+     GYROSCOPE CONTROLS
+  ═══════════════════════════════════════ */
+  const reticle = {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    smoothing: 0.15,
+    calibratedBeta: 0,
+    calibratedGamma: 0,
+    sensitivity: 3.5,
+  };
+
+  let gyroEnabled = false;
+  let gyroPermissionGranted = false;
+
+  async function requestGyroPermission() {
+    if (typeof DeviceOrientationEvent !== 'undefined' && 
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        gyroPermissionGranted = (permission === 'granted');
+        return gyroPermissionGranted;
+      } catch (error) {
+        console.warn('Gyro permission denied:', error);
+        return false;
+      }
+    } else {
+      // Non-iOS devices don't need permission
+      gyroPermissionGranted = true;
+      return true;
+    }
+  }
+
+  function handleOrientation(event) {
+    if (!gyroEnabled) return;
+
+    const beta = event.beta || 0;   // Front-to-back tilt (-180 to 180)
+    const gamma = event.gamma || 0; // Left-to-right tilt (-90 to 90)
+
+    // Calculate relative movement from calibrated position
+    const deltaBeta = beta - reticle.calibratedBeta;
+    const deltaGamma = gamma - reticle.calibratedGamma;
+
+    // Map tilt to screen coordinates
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Gamma controls X (left-right tilt)
+    reticle.targetX = (W / 2) + (deltaGamma * reticle.sensitivity);
+    
+    // Beta controls Y (front-back tilt)
+    reticle.targetY = (H / 2) + (deltaBeta * reticle.sensitivity);
+
+    // Clamp to screen bounds
+    reticle.targetX = Math.max(0, Math.min(W, reticle.targetX));
+    reticle.targetY = Math.max(0, Math.min(H, reticle.targetY));
+  }
+
+  function calibrateGyro(event) {
+    reticle.calibratedBeta = event.beta || 0;
+    reticle.calibratedGamma = event.gamma || 0;
+    reticle.x = canvas.width / 2;
+    reticle.y = canvas.height / 2;
+    reticle.targetX = reticle.x;
+    reticle.targetY = reticle.y;
+  }
+
+  function updateReticle() {
+    // Smooth movement
+    reticle.x += (reticle.targetX - reticle.x) * reticle.smoothing;
+    reticle.y += (reticle.targetY - reticle.y) * reticle.smoothing;
+  }
+
+  function drawReticle() {
+    const { x, y } = reticle;
+    
+    ctx.save();
+    
+    // Outer ring (pulsing)
+    const pulse = Math.sin(Date.now() * 0.005) * 0.15 + 0.85;
+    ctx.strokeStyle = `rgba(255, 68, 68, ${pulse})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 30, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner ring
+    ctx.strokeStyle = 'rgba(255, 255, 68, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Crosshair
+    ctx.strokeStyle = 'rgba(255, 136, 0, 0.9)';
+    ctx.lineWidth = 2;
+    const crossLen = 35;
+    const gap = 8;
+    
+    // Horizontal line
+    ctx.beginPath();
+    ctx.moveTo(x - crossLen, y);
+    ctx.lineTo(x - gap, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + gap, y);
+    ctx.lineTo(x + crossLen, y);
+    ctx.stroke();
+    
+    // Vertical line
+    ctx.beginPath();
+    ctx.moveTo(x, y - crossLen);
+    ctx.lineTo(x, y - gap);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y + gap);
+    ctx.lineTo(x, y + crossLen);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = 'rgba(255, 68, 68, 0.9)';
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glow effect
+    ctx.shadowColor = '#ff4444';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   /* ═══════════════════════════════════════
@@ -433,13 +571,6 @@
         // X eyes
         ctx.strokeStyle = '#e74c3c';
         ctx.lineWidth = 2;
-        ['m','m'].forEach((_, i) => {
-          ctx.beginPath();
-          ctx.moveTo((32+i*4-2)*sc, -18*sc); ctx.lineTo((36+i*4-2)*sc, -12*sc);
-          ctx.moveTo((36+i*4-2)*sc, -18*sc); ctx.lineTo((32+i*4-2)*sc, -12*sc);
-          ctx.stroke();
-        });
-        // single X
         ctx.beginPath();
         ctx.moveTo(31*sc, -18*sc); ctx.lineTo(37*sc, -12*sc);
         ctx.moveTo(37*sc, -18*sc); ctx.lineTo(31*sc, -12*sc);
@@ -941,16 +1072,20 @@
      INPUT HANDLING
   ═══════════════════════════════════════ */
   function handleShot(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width  / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (clientX - rect.left) * scaleX;
-    const y = (clientY - rect.top)  * scaleY;
+    // Use reticle position instead of tap position
+    const x = reticle.x;
+    const y = reticle.y;
 
     // Game over restart
     if (state === STATE.GAME_OVER && gameOverOverlay?.restartBtn) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width  / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const tapX = (clientX - rect.left) * scaleX;
+      const tapY = (clientY - rect.top)  * scaleY;
+      
       const btn = gameOverOverlay.restartBtn;
-      if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+      if (tapX >= btn.x && tapX <= btn.x + btn.w && tapY >= btn.y && tapY <= btn.y + btn.h) {
         resetGame();
         return;
       }
@@ -1013,6 +1148,11 @@
       ctx.fillRect(0, 0, W, H);
     }
 
+    // Update reticle position
+    if (gyroEnabled) {
+      updateReticle();
+    }
+
     // Game playing
     if (state === STATE.PLAYING || state === STATE.ROUND_END || state === STATE.GAME_OVER) {
 
@@ -1065,6 +1205,12 @@
       drawParticles();
       drawShots();
       drawDog();
+      
+      // Draw reticle on top of everything
+      if (gyroEnabled) {
+        drawReticle();
+      }
+      
       drawHUD();
       drawBanner();
       drawGameOver();
@@ -1076,6 +1222,31 @@
   ═══════════════════════════════════════ */
   startBtn.addEventListener('click', async () => {
     await startCamera();
+    
+    // Request gyroscope permission
+    const gyroGranted = await requestGyroPermission();
+    
+    if (gyroGranted) {
+      // Set up orientation listener
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      
+      // Calibrate on first orientation event
+      const calibrate = (event) => {
+        calibrateGyro(event);
+        window.removeEventListener('deviceorientation', calibrate);
+        gyroEnabled = true;
+      };
+      window.addEventListener('deviceorientation', calibrate, { once: true });
+    } else {
+      // Fallback to center position if gyro not available
+      reticle.x = canvas.width / 2;
+      reticle.y = canvas.height / 2;
+      reticle.targetX = reticle.x;
+      reticle.targetY = reticle.y;
+      gyroEnabled = false;
+      console.warn('Gyroscope not available - reticle will remain centered');
+    }
+    
     startScreen.style.display = 'none';
     resetGame();
     loop();
