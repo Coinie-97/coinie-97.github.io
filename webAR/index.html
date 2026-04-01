@@ -62,6 +62,7 @@
         <div>📱 AR Distance Measurement</div>
         <div id="status" class="searching">Status: Searching for HIRO marker...</div>
         <div class="instruction">👆 Tap the box to measure distance</div>
+        <div class="instruction">🔵 Blue cubes persist in world space</div>
         <div id="distance-display">Distance: -- cm | Cubes: 0</div>
     </div>
 
@@ -80,6 +81,9 @@
             position="0 0 0"
             raycaster="objects: .clickable; far: 100">
         </a-entity>
+        
+        <!-- Container for spawned blue cubes (outside marker so they persist in world space) -->
+        <a-entity id="spawned-cubes"></a-entity>
         
         <!-- HIRO Marker -->
         <a-marker preset="hiro" id="hiro-marker">
@@ -120,9 +124,6 @@
                     position="0 0 0">
                 </a-cylinder>
             </a-entity>
-            
-            <!-- Container for spawned blue cubes -->
-            <a-entity id="spawned-cubes"></a-entity>
             
             <!-- Marker center indicator -->
             <a-sphere 
@@ -252,36 +253,24 @@
         function spawnBlueCube(worldPosition) {
             cubeSpawnCount++;
             
-            // Convert world position to local position relative to marker
-            const markerWorldPos = new THREE.Vector3();
-            marker.object3D.getWorldPosition(markerWorldPos);
-            
-            const localPosition = new THREE.Vector3();
-            localPosition.subVectors(worldPosition, markerWorldPos);
-            
             console.log('\n🔵 SPAWNING BLUE CUBE #' + cubeSpawnCount);
             console.log('World Position:', {
                 x: worldPosition.x.toFixed(3),
                 y: worldPosition.y.toFixed(3),
                 z: worldPosition.z.toFixed(3)
             });
-            console.log('Local Position (relative to marker):', {
-                x: localPosition.x.toFixed(3),
-                y: localPosition.y.toFixed(3),
-                z: localPosition.z.toFixed(3)
-            });
+            console.log('Note: Cube is spawned in WORLD SPACE and will persist when marker is lost');
             
-            // Create the blue cube
+            // Create the blue cube directly in world space
             const blueCube = document.createElement('a-box');
             blueCube.setAttribute('width', '0.3');
             blueCube.setAttribute('height', '0.3');
             blueCube.setAttribute('depth', '0.3');
             blueCube.setAttribute('color', '#1E90FF'); // Dodger Blue
-            blueCube.setAttribute('position', {
-                x: localPosition.x,
-                y: localPosition.y,
-                z: localPosition.z
-            });
+            
+            // Set world position directly
+            blueCube.object3D.position.copy(worldPosition);
+            
             blueCube.setAttribute('material', 'opacity: 0.8; transparent: true');
             
             // Add spawn animation
@@ -308,10 +297,11 @@
             
             blueCube.appendChild(text);
             
-            // Add to the container
+            // Add to the world space container (not inside marker)
             spawnedCubesContainer.appendChild(blueCube);
             
             console.log('Blue cube #' + cubeSpawnCount + ' spawned successfully! ✓');
+            console.log('Cube is anchored in world space - will remain visible even without marker');
             console.log('Total spawned cubes:', cubeSpawnCount);
             console.log('----------------------------\n');
         }
