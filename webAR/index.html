@@ -62,9 +62,9 @@
         <div>📱 AR Distance Measurement</div>
         <div id="status" class="searching">Status: Searching for HIRO marker...</div>
         <div class="instruction">👆 Tap the box to measure distance</div>
-        <div id="distance-display">Distance: -- cm</div>
+        <div id="distance-display">Distance: -- cm | Cubes: 0</div>
     </div>
- 
+
     <a-scene
         embedded
         arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
@@ -88,9 +88,9 @@
                 id="target-box"
                 class="clickable"
                 position="0 0.5 -2"
-                width="1.5"
-                height="1.5"
-                depth="1.5"
+                width="0.5"
+                height="0.5"
+                depth="0.5"
                 color="#FF6B6B"
                 material="opacity: 0.9"
                 animation="property: rotation; to: 0 360 0; loop: true; dur: 4000; easing: linear"
@@ -121,6 +121,9 @@
                 </a-cylinder>
             </a-entity>
             
+            <!-- Container for spawned blue cubes -->
+            <a-entity id="spawned-cubes"></a-entity>
+            
             <!-- Marker center indicator -->
             <a-sphere 
                 position="0 0 0" 
@@ -130,7 +133,7 @@
             </a-sphere>
         </a-marker>
     </a-scene>
- 
+
     <script>
         // Wait for scene to load
         const sceneEl = document.querySelector('a-scene');
@@ -141,10 +144,12 @@
         const distanceDisplay = document.querySelector('#distance-display');
         const distanceLine = document.querySelector('#distance-line');
         const lineCylinder = document.querySelector('#line-cylinder');
+        const spawnedCubesContainer = document.querySelector('#spawned-cubes');
         
         let markerFound = false;
         let boxSpawned = false;
- 
+        let cubeSpawnCount = 0;
+
         // Track marker detection
         marker.addEventListener('markerFound', () => {
             markerFound = true;
@@ -164,14 +169,14 @@
             distanceLine.setAttribute('visible', false);
             console.log('HIRO marker lost');
         });
- 
+
         // Handle click/tap on the box
         targetBox.addEventListener('click', function(evt) {
             if (!markerFound) {
                 console.log('Cannot measure - marker not visible');
                 return;
             }
- 
+
             console.log('\n--- RAYCAST MEASUREMENT ---');
             
             // Get world positions
@@ -221,7 +226,8 @@
             // Update UI display
             distanceDisplay.innerHTML = `
                 <strong>Distance:</strong> ${distanceCm} cm (${distanceM} m)<br>
-                <strong>Taps:</strong> ${tapCount}
+                <strong>Taps:</strong> ${tapCount}<br>
+                <strong>Cubes Spawned:</strong> ${cubeSpawnCount}
             `;
             
             // Visual feedback - flash the box
@@ -233,11 +239,82 @@
             // Draw a line from camera to box
             drawDistanceLine(cameraWorldPos, boxWorldPos, distance);
             
+            // Spawn a blue cube at the box location (raycast hit point)
+            spawnBlueCube(boxWorldPos);
+            
             // Increment tap counter
             tapCount++;
         });
         
         let tapCount = 1;
+        
+        // Function to spawn a blue cube at the raycast hit location
+        function spawnBlueCube(worldPosition) {
+            cubeSpawnCount++;
+            
+            // Convert world position to local position relative to marker
+            const markerWorldPos = new THREE.Vector3();
+            marker.object3D.getWorldPosition(markerWorldPos);
+            
+            const localPosition = new THREE.Vector3();
+            localPosition.subVectors(worldPosition, markerWorldPos);
+            
+            console.log('\n🔵 SPAWNING BLUE CUBE #' + cubeSpawnCount);
+            console.log('World Position:', {
+                x: worldPosition.x.toFixed(3),
+                y: worldPosition.y.toFixed(3),
+                z: worldPosition.z.toFixed(3)
+            });
+            console.log('Local Position (relative to marker):', {
+                x: localPosition.x.toFixed(3),
+                y: localPosition.y.toFixed(3),
+                z: localPosition.z.toFixed(3)
+            });
+            
+            // Create the blue cube
+            const blueCube = document.createElement('a-box');
+            blueCube.setAttribute('width', '0.3');
+            blueCube.setAttribute('height', '0.3');
+            blueCube.setAttribute('depth', '0.3');
+            blueCube.setAttribute('color', '#1E90FF'); // Dodger Blue
+            blueCube.setAttribute('position', {
+                x: localPosition.x,
+                y: localPosition.y,
+                z: localPosition.z
+            });
+            blueCube.setAttribute('material', 'opacity: 0.8; transparent: true');
+            
+            // Add spawn animation
+            blueCube.setAttribute('animation', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 500; easing: easeOutElastic');
+            blueCube.setAttribute('animation__rotate', 'property: rotation; to: 360 360 360; loop: true; dur: 8000; easing: linear');
+            
+            // Add glow effect with a sphere
+            const glowSphere = document.createElement('a-sphere');
+            glowSphere.setAttribute('radius', '0.25');
+            glowSphere.setAttribute('color', '#00BFFF'); // Deep Sky Blue
+            glowSphere.setAttribute('opacity', '0.3');
+            glowSphere.setAttribute('material', 'transparent: true');
+            glowSphere.setAttribute('animation', 'property: scale; to: 1.3 1.3 1.3; loop: true; dur: 1000; dir: alternate; easing: easeInOutSine');
+            
+            blueCube.appendChild(glowSphere);
+            
+            // Add label showing cube number
+            const text = document.createElement('a-text');
+            text.setAttribute('value', '#' + cubeSpawnCount);
+            text.setAttribute('align', 'center');
+            text.setAttribute('position', '0 0.3 0');
+            text.setAttribute('scale', '0.5 0.5 0.5');
+            text.setAttribute('color', '#FFFFFF');
+            
+            blueCube.appendChild(text);
+            
+            // Add to the container
+            spawnedCubesContainer.appendChild(blueCube);
+            
+            console.log('Blue cube #' + cubeSpawnCount + ' spawned successfully! ✓');
+            console.log('Total spawned cubes:', cubeSpawnCount);
+            console.log('----------------------------\n');
+        }
         
         // Function to draw a visual line between camera and box
         function drawDistanceLine(start, end, distance) {
@@ -301,4 +378,3 @@
     </script>
 </body>
 </html>
- 
