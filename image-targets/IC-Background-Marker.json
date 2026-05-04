@@ -1,13 +1,13 @@
 {
   "type": "PLANAR",
   "properties": {
-    "top": 320,
-    "left": 0,
-    "width": 1440,
-    "height": 1920,
-    "isRotated": true,
-    "originalWidth": 1440,
-    "originalHeight": 2560
+    "top": 261,
+    "left": 936,
+    "width": 689,
+    "height": 918,
+    "isRotated": false,
+    "originalWidth": 2560,
+    "originalHeight": 1440
   },
   "imagePath": "image-targets/IC-Background-Marker_luminance.png",
   "metadata": null,
@@ -19,5 +19,5 @@
     "luminanceImage": "IC-Background-Marker_luminance.png"
   },
   "created": 1777896312423,
-  "updated": 1777896312423
+  "updated": 1777897554761
 }
