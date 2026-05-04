@@ -1,10 +1,10 @@
 {
   "type": "PLANAR",
   "properties": {
-    "top": 261,
-    "left": 936,
-    "width": 689,
-    "height": 918,
+    "top": 0,
+    "left": 786,
+    "width": 1080,
+    "height": 1440,
     "isRotated": false,
     "originalWidth": 2560,
     "originalHeight": 1440
@@ -19,5 +19,5 @@
     "luminanceImage": "IC-Background-Marker_luminance.png"
   },
   "created": 1777896312423,
-  "updated": 1777897554761
+  "updated": 1777897971750
 }
