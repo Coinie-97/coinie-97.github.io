@@ -1,0 +1,23 @@
+{
+  "type": "PLANAR",
+  "properties": {
+    "top": 0,
+    "left": 9,
+    "width": 594,
+    "height": 792,
+    "isRotated": false,
+    "originalWidth": 612,
+    "originalHeight": 792
+  },
+  "imagePath": "image-targets/Medium White Circle Logo-High Resolution_luminance.jpg",
+  "metadata": null,
+  "name": "Medium White Circle Logo-High Resolution",
+  "resources": {
+    "originalImage": "Medium White Circle Logo-High Resolution_original.jpg",
+    "croppedImage": "Medium White Circle Logo-High Resolution_cropped.jpg",
+    "thumbnailImage": "Medium White Circle Logo-High Resolution_thumbnail.jpg",
+    "luminanceImage": "Medium White Circle Logo-High Resolution_luminance.jpg"
+  },
+  "created": 1777899022877,
+  "updated": 1777899022877
+}
