@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>AR Circuit Racer</title>
+  <script>
+    var isAndroid = /android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      var originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = function(constraints) {
+        if (constraints && constraints.video) {
+          constraints.video = { facingMode:'environment', width:{ideal:640}, height:{ideal:480} };
+        }
+        return originalGetUserMedia(constraints);
+      };
+    }
+  </script>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <style>
+    body{margin:0;overflow:hidden;font-family:'Helvetica Neue',Arial,sans-serif}
+
+    /* ── overlays ── */
+    .message-overlay{
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      display:flex;flex-direction:column;justify-content:center;align-items:center;
+      z-index:9999;pointer-events:none;opacity:0;transition:opacity .5s ease;
+    }
+    .message-overlay.visible{opacity:1}
+    .message-overlay.hidden{display:none}
+
+    .message-box{
+      background:rgba(0,0,0,.85);padding:30px 50px;border-radius:20px;
+      text-align:center;max-width:80%;
+    }
+    .message-box h1{color:#fff;font-size:28px;margin:0 0 15px;font-weight:600}
+    .message-box p{color:#ccc;font-size:18px;margin:0}
+
+    .scan-icon{width:80px;height:80px;margin-bottom:20px;animation:pulse 2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.1);opacity:.7}}
+
+    /* ── countdown ── */
+    #countdown{
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      display:flex;justify-content:center;align-items:center;
+      z-index:9999;pointer-events:none;opacity:0;transition:opacity .2s ease;
+    }
+    #countdown.visible{opacity:1}
+    #countdown span{
+      font-size:120px;font-weight:700;color:#fff;
+      text-shadow:0 4px 20px rgba(0,0,0,.5);
+      animation:countPop .5s ease;
+    }
+    @keyframes countPop{
+      0%{transform:scale(.5);opacity:0}
+      50%{transform:scale(1.2)}
+      100%{transform:scale(1);opacity:1}
+    }
+
+    /* ── HUD ── */
+    #game-hud{
+      position:fixed;top:0;left:0;right:0;
+      display:flex;justify-content:space-between;align-items:flex-start;
+      padding:16px 20px;z-index:9998;pointer-events:none;
+      opacity:0;transition:opacity .3s ease;
+    }
+    #game-hud.visible{opacity:1}
+    .hud-pill{
+      background:rgba(0,0,0,.7);padding:8px 18px;border-radius:12px;
+      color:#fff;font-size:18px;font-weight:600;
+    }
+
+    /* ── controls ── */
+    #pad{
+      position:fixed;bottom:0;left:0;right:0;
+      display:none;justify-content:space-between;padding:10px 16px 14px;
+      pointer-events:none;z-index:9998;
+    }
+    #pad.visible{display:flex}
+    .side{display:flex;gap:8px;align-items:flex-end}
+    .btn{
+      pointer-events:all;width:56px;height:56px;border-radius:50%;
+      background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.2);
+      color:rgba(255,255,255,.5);font-size:20px;
+      display:flex;align-items:center;justify-content:center;
+      user-select:none;-webkit-user-select:none;touch-action:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .btn.active{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.5)}
+    .btn.gas{border-color:rgba(100,255,100,.3);color:rgba(100,255,100,.5)}
+    .btn.gas.active{background:rgba(100,255,100,.2);border-color:rgba(100,255,100,.6)}
+    .btn.brk{border-color:rgba(255,100,100,.3);color:rgba(255,100,100,.5)}
+    .btn.brk.active{background:rgba(255,100,100,.2);border-color:rgba(255,100,100,.6)}
+
+    /* ── game over ── */
+    #game-over{
+      position:fixed;top:0;left:0;right:0;bottom:0;
+      background:rgba(0,0,0,.9);display:flex;flex-direction:column;
+      justify-content:center;align-items:center;z-index:10000;
+      opacity:0;pointer-events:none;transition:opacity .5s ease;
+    }
+    #game-over.visible{opacity:1;pointer-events:auto}
+    #game-over h1{color:#fff;font-size:42px;margin:0 0 10px}
+    #game-over .final-time{color:#4CAF50;font-size:60px;font-weight:700;margin:0 0 10px}
+    #game-over .laps-label{color:#aaa;font-size:20px;margin:0 0 40px}
+    #play-again{
+      background:#4CAF50;color:#fff;border:none;padding:18px 50px;
+      font-size:22px;font-weight:600;border-radius:50px;cursor:pointer;
+      transition:transform .2s ease,background .2s ease;
+    }
+    #play-again:hover{background:#66BB6A;transform:scale(1.05)}
+    #play-again:active{transform:scale(.98)}
+
+    /* ── lap popup ── */
+    #lap-popup{
+      position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      font-size:48px;font-weight:700;color:#4CAF50;
+      text-shadow:0 4px 20px rgba(0,0,0,.5);opacity:0;
+      z-index:9997;pointer-events:none;
+    }
+    #lap-popup.show{animation:lapPop .8s ease forwards}
+    @keyframes lapPop{
+      0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}
+      30%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}
+      100%{opacity:0;transform:translate(-50%,-80%) scale(1)}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ SCAN MESSAGE ═══ -->
+<div id="scan-message" class="message-overlay visible">
+  <div class="message-box">
+    <svg class="scan-icon" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="25" height="5" fill="white"/>
+      <rect x="10" y="10" width="5" height="25" fill="white"/>
+      <rect x="65" y="10" width="25" height="5" fill="white"/>
+      <rect x="85" y="10" width="5" height="25" fill="white"/>
+      <rect x="10" y="85" width="25" height="5" fill="white"/>
+      <rect x="10" y="65" width="5" height="25" fill="white"/>
+      <rect x="65" y="85" width="25" height="5" fill="white"/>
+      <rect x="85" y="65" width="5" height="25" fill="white"/>
+      <rect x="30" y="30" width="40" height="40" rx="5" stroke="white" stroke-width="3" fill="none"/>
+    </svg>
+    <h1>Scan the Marker</h1>
+    <p>Point your camera at the Hiro marker</p>
+  </div>
+</div>
+
+<!-- ═══ READY MESSAGE ═══ -->
+<div id="ready-message" class="message-overlay hidden">
+  <div class="message-box">
+    <h1>🏎️ Get Ready!</h1>
+    <p>Complete 3 laps around the circuit!</p>
+  </div>
+</div>
+
+<!-- ═══ COUNTDOWN ═══ -->
+<div id="countdown"></div>
+
+<!-- ═══ HUD ═══ -->
+<div id="game-hud">
+  <div class="hud-pill" id="hud-lap">LAP 1/3</div>
+  <div class="hud-pill" id="hud-time">0:00</div>
+  <div class="hud-pill" id="hud-speed">0 km/h</div>
+</div>
+
+<!-- ═══ LAP POPUP ═══ -->
+<div id="lap-popup"></div>
+
+<!-- ═══ CONTROLS ═══ -->
+<div id="pad">
+  <div class="side">
+    <div class="btn" id="bL">◀</div>
+    <div class="btn" id="bR">▶</div>
+  </div>
+  <div class="side">
+    <div class="btn brk" id="bD">▼</div>
+    <div class="btn gas" id="bU">▲</div>
+  </div>
+</div>
+
+<!-- ═══ GAME OVER ═══ -->
+<div id="game-over">
+  <h1>🏁 Race Complete!</h1>
+  <p class="final-time" id="final-time">0:00</p>
+  <p class="laps-label">3 laps finished</p>
+  <button id="play-again">Race Again</button>
+</div>
+
+<!-- ═══ AR SCENE ═══ -->
+<script>
+  var arjsSettings = 'sourceType:webcam;debugUIEnabled:false;';
+  if (isAndroid) arjsSettings += 'sourceWidth:640;sourceHeight:480;displayWidth:640;displayHeight:480;';
+  document.write('<a-scene embedded arjs="' + arjsSettings + '" vr-mode-ui="enabled:false" renderer="alpha:true;logarithmicDepthBuffer:true;">');
+</script>
+  <a-entity camera></a-entity>
+  <a-marker id="hiro-marker" preset="hiro" smooth="true" smoothCount="10" smoothTolerance="0.01" smoothThreshold="2"></a-marker>
+  <a-entity id="race-container" visible="false">
+    <a-entity id="race-board" rotation="-90 0 0"></a-entity>
+  </a-entity>
+</a-scene>
+
+<!-- ═══ OFFSCREEN CANVAS ═══ -->
+<canvas id="gc" width="700" height="500" style="display:none"></canvas>
+
+<script>
+var sceneEl = document.querySelector('a-scene');
+sceneEl.addEventListener('loaded', function() {
+
+  /* ═══ CANVAS & TRACK ═══ */
+  var cv = document.getElementById('gc');
+  var c = cv.getContext('2d');
+  var W = 700, H = 500;
+  var TRACK_W = 55, TOTAL_LAPS = 3;
+
+  // Control points matching the reference image shape:
+  // Start/finish at top center, S-curve right, wide bottom, bump-out left
+  var pts = [
+    {x:350, y:52},   // 0  top center (start/finish)
+    {x:480, y:55},   // 1  top right
+    {x:580, y:80},   // 2  right curve in
+    {x:620, y:140},  // 3  right S top
+    {x:580, y:200},  // 4  right S mid-out
+    {x:620, y:260},  // 5  right S mid-in
+    {x:600, y:340},  // 6  right S bottom
+    {x:530, y:400},  // 7  bottom right curve
+    {x:400, y:430},  // 8  bottom center-right
+    {x:270, y:430},  // 9  bottom center-left
+    {x:160, y:400},  // 10 bottom left curve
+    {x:100, y:340},  // 11 left side lower
+    {x:60,  y:270},  // 12 left bump out
+    {x:55,  y:200},  // 13 left bump peak
+    {x:80,  y:140},  // 14 left bump return
+    {x:130, y:90},   // 15 upper left
+    {x:220, y:55},   // 16 top left
+  ];
+  var N = pts.length;
+
+  // Catmull-Rom spline interpolation
+  function catmull(p0,p1,p2,p3,t) {
+    var t2=t*t, t3=t2*t;
+    return {
+      x: 0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+      y: 0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+    };
+  }
+
+  function trackPos(t) {
+    t = ((t % 1) + 1) % 1;
+    var total = t * N;
+    var i = Math.floor(total);
+    var frac = total - i;
+    var p0 = pts[((i-1)%N+N)%N];
+    var p1 = pts[i % N];
+    var p2 = pts[(i+1) % N];
+    var p3 = pts[(i+2) % N];
+    return catmull(p0,p1,p2,p3,frac);
+  }
+  function trackTan(t) {
+    var dt = 0.0003, a = trackPos(t), b = trackPos((t+dt)%1);
+    var dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy)||1;
+    return { x: dx/len, y: dy/len };
+  }
+  function trackNorm(t) { var tn = trackTan(t); return { x: -tn.y, y: tn.x }; }
+
+  /* ═══ STATE ═══ */
+  var pT=0, pSpeed=0, pOff=0, pLap=0, pPrevT=0;
+  var MAX_SPD=0.0007, ACC=0.000012, BRK=0.000025, DRG=0.000006, STEER=0.8;
+  var raceTime=0, gameState='scanning';
+
+  /* ═══ INPUT ═══ */
+  var k = {};
+  document.addEventListener('keydown', function(e) {
+    k[e.key.toLowerCase()] = true;
+    if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d',' '].indexOf(e.key.toLowerCase()) > -1) e.preventDefault();
+  });
+  document.addEventListener('keyup', function(e) { k[e.key.toLowerCase()] = false; });
+  document.addEventListener('touchmove', function(e) { e.preventDefault(); }, {passive:false});
+
+  function bind(id, key) {
+    var el = document.getElementById(id);
+    el.addEventListener('pointerdown', function(e) {
+      e.preventDefault(); el.setPointerCapture(e.pointerId);
+      k[key] = true; el.classList.add('active');
+    });
+    el.addEventListener('pointerup', function(e) {
+      e.preventDefault(); k[key] = false; el.classList.remove('active');
+    });
+    el.addEventListener('pointercancel', function() { k[key] = false; el.classList.remove('active'); });
+    el.addEventListener('lostpointercapture', function() { k[key] = false; el.classList.remove('active'); });
+  }
+  bind('bL','arrowleft'); bind('bR','arrowright');
+  bind('bU','arrowup'); bind('bD','arrowdown');
+
+  /* ═══ DOM REFS ═══ */
+  var scanMessage = document.getElementById('scan-message');
+  var readyMessage = document.getElementById('ready-message');
+  var countdownEl = document.getElementById('countdown');
+  var gameHud = document.getElementById('game-hud');
+  var hudLap = document.getElementById('hud-lap');
+  var hudTime = document.getElementById('hud-time');
+  var hudSpeed = document.getElementById('hud-speed');
+  var lapPopup = document.getElementById('lap-popup');
+  var gameOverScreen = document.getElementById('game-over');
+  var finalTimeEl = document.getElementById('final-time');
+  var playAgainBtn = document.getElementById('play-again');
+  var padEl = document.getElementById('pad');
+
+  var markerEl = document.getElementById('hiro-marker');
+  var raceContainer = document.getElementById('race-container');
+  var raceBoard = document.getElementById('race-board');
+
+  var markerVisible = false;
+
+  /* ═══ MARKER DETECTION ═══ */
+  markerEl.addEventListener('markerFound', function() {
+    markerVisible = true;
+    raceContainer.setAttribute('visible', 'true');
+    if (gameState === 'scanning') {
+      showReadyMessage();
+    }
+  });
+  markerEl.addEventListener('markerLost', function() { markerVisible = false; });
+
+  /* ═══ UI FLOW (same as basketball) ═══ */
+  function showReadyMessage() {
+    gameState = 'ready';
+    scanMessage.classList.remove('visible');
+    setTimeout(function() { scanMessage.classList.add('hidden'); }, 500);
+
+    readyMessage.classList.remove('hidden');
+    setTimeout(function() { readyMessage.classList.add('visible'); }, 50);
+
+    setTimeout(function() {
+      readyMessage.classList.remove('visible');
+      setTimeout(function() { readyMessage.classList.add('hidden'); }, 500);
+      startCountdown();
+    }, 2000);
+  }
+
+  function startCountdown() {
+    gameState = 'countdown';
+    var count = 3;
+    countdownEl.classList.add('visible');
+
+    function showCount() {
+      countdownEl.innerHTML = '<span>' + count + '</span>';
+      if (navigator.vibrate) navigator.vibrate(50);
+      if (count > 0) {
+        count--;
+        setTimeout(showCount, 1000);
+      } else {
+        countdownEl.innerHTML = '<span>GO!</span>';
+        setTimeout(function() {
+          countdownEl.classList.remove('visible');
+          startGame();
+        }, 500);
+      }
+    }
+    showCount();
+  }
+
+  function startGame() {
+    gameState = 'playing';
+    pT=0; pSpeed=0; pOff=0; pLap=0; pPrevT=0; raceTime=0;
+    gameHud.classList.add('visible');
+    padEl.classList.add('visible');
+  }
+
+  function showLapPopup(text) {
+    lapPopup.textContent = text;
+    lapPopup.classList.remove('show');
+    void lapPopup.offsetWidth;
+    lapPopup.classList.add('show');
+    if (navigator.vibrate) navigator.vibrate([50, 30, 80]);
+  }
+
+  function finishRace() {
+    gameState = 'finished';
+    gameHud.classList.remove('visible');
+    padEl.classList.remove('visible');
+    finalTimeEl.textContent = fmt(raceTime);
+    gameOverScreen.classList.add('visible');
+  }
+
+  playAgainBtn.addEventListener('click', function() {
+    gameOverScreen.classList.remove('visible');
+    startCountdown();
+  });
+
+  function fmt(ms) { var s = Math.floor(ms/1000); return Math.floor(s/60) + ':' + ('0'+(s%60)).slice(-2); }
+
+  /* ═══ DRAW ═══ */
+  function drawCar(x, y, angle, col) {
+    c.save(); c.translate(x,y); c.rotate(angle);
+    c.fillStyle = col; c.fillRect(-6,-10,12,20);
+    c.fillStyle = '#aac'; c.fillRect(-4,-9,8,5);
+    c.fillStyle = '#fff'; c.fillRect(-2,7,4,3);
+    c.strokeStyle = '#fff'; c.lineWidth = 1; c.strokeRect(-7,-11,14,22);
+    c.restore();
+  }
+
+  function render() {
+    c.fillStyle = '#1a1a1a'; c.fillRect(0,0,W,H);
+
+    c.strokeStyle = '#222'; c.lineWidth = 1;
+    for (var x=0; x<W; x+=30) { c.beginPath(); c.moveTo(x,0); c.lineTo(x,H); c.stroke(); }
+    for (var y=0; y<H; y+=30) { c.beginPath(); c.moveTo(0,y); c.lineTo(W,y); c.stroke(); }
+
+    c.lineWidth = TRACK_W; c.strokeStyle = '#333'; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    for (var i=0; i<=300; i++) { var p = trackPos(i/300); i===0 ? c.moveTo(p.x,p.y) : c.lineTo(p.x,p.y); }
+    c.closePath(); c.stroke();
+
+    for (var s = 0; s < 2; s++) {
+      var side = s === 0 ? 1 : -1;
+      c.lineWidth = 2; c.strokeStyle = side > 0 ? '#4a4' : '#a44';
+      c.beginPath();
+      for (var i=0; i<=300; i++) {
+        var t = i/300, p = trackPos(t), n = trackNorm(t);
+        var ex = p.x + n.x*(TRACK_W/2)*side, ey = p.y + n.y*(TRACK_W/2)*side;
+        i===0 ? c.moveTo(ex,ey) : c.lineTo(ex,ey);
+      }
+      c.closePath(); c.stroke();
+    }
+
+    c.setLineDash([8,8]); c.lineWidth = 1; c.strokeStyle = '#5558';
+    c.beginPath();
+    for (var i=0; i<=300; i++) { var p = trackPos(i/300); i===0 ? c.moveTo(p.x,p.y) : c.lineTo(p.x,p.y); }
+    c.closePath(); c.stroke(); c.setLineDash([]);
+
+    var sp = trackPos(0), sn = trackNorm(0);
+    c.strokeStyle = '#fff'; c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(sp.x+sn.x*TRACK_W/2, sp.y+sn.y*TRACK_W/2);
+    c.lineTo(sp.x-sn.x*TRACK_W/2, sp.y-sn.y*TRACK_W/2);
+    c.stroke();
+
+    var pp = trackPos(pT), pn = trackNorm(pT), pt = trackTan(pT);
+    drawCar(pp.x+pn.x*pOff, pp.y+pn.y*pOff, Math.atan2(pt.y,pt.x)+Math.PI/2, '#2d2');
+  }
+
+  /* ═══ AR TEXTURE ═══ */
+  var THREE = AFRAME.THREE;
+  var canvasTex = new THREE.CanvasTexture(cv);
+  canvasTex.minFilter = THREE.NearestFilter;
+  canvasTex.magFilter = THREE.NearestFilter;
+  var boardMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(4, 4 * (H/W)),
+    new THREE.MeshBasicMaterial({ map: canvasTex })
+  );
+  raceBoard.object3D.add(boardMesh);
+
+  /* ═══ LOOP ═══ */
+  var lt = performance.now();
+  function loop(now) {
+    var dt = Math.min((now - lt), 50);
+    lt = now;
+
+    if (gameState === 'playing') {
+      raceTime += dt;
+
+      if (k['arrowup']||k['w']) pSpeed = Math.min(pSpeed + ACC*dt, MAX_SPD);
+      else if (k['arrowdown']||k['s']) pSpeed = Math.max(pSpeed - BRK*dt, -MAX_SPD*0.3);
+      else pSpeed = Math.max(pSpeed - DRG*dt, 0);
+
+      var sf = STEER * dt * 0.06;
+      if (k['arrowleft']||k['a']) pOff = Math.max(pOff - sf, -TRACK_W/2 + 8);
+      if (k['arrowright']||k['d']) pOff = Math.min(pOff + sf, TRACK_W/2 - 8);
+
+      pPrevT = pT;
+      pT = (pT + pSpeed*dt + 1) % 1;
+      if (pT < pPrevT && pSpeed > 0 && pPrevT > 0.9) {
+        pLap++;
+        if (pLap >= TOTAL_LAPS) {
+          finishRace();
+        } else {
+          showLapPopup('LAP ' + (pLap+1));
+        }
+      }
+
+      hudLap.textContent = 'LAP ' + (Math.min(pLap+1, TOTAL_LAPS)) + '/' + TOTAL_LAPS;
+      hudTime.textContent = fmt(raceTime);
+      hudSpeed.textContent = Math.round(Math.abs(pSpeed)/MAX_SPD*300) + ' km/h';
+    }
+
+    // Position race board on marker
+    if (markerVisible) {
+      var mObj = markerEl.object3D;
+      mObj.updateMatrixWorld(true);
+      raceContainer.object3D.position.setFromMatrixPosition(mObj.matrixWorld);
+      raceContainer.object3D.quaternion.setFromRotationMatrix(mObj.matrixWorld);
+      raceContainer.object3D.scale.setFromMatrixScale(mObj.matrixWorld);
+    }
+
+    render();
+    canvasTex.needsUpdate = true;
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+});
+</script>
+</body>
+</html>

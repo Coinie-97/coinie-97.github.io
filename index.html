@@ -1,1 +1,193 @@
-<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>World Effects</title><meta itemprop="name" content="World Effects"><meta name="twitter:title" content="World Effects"><meta property="og:title" content="World Effects"><meta property="og:site_name" content="World Effects"><meta name="description" content="This project demonstrates how to use World Effects to anchor virtual content to a flat surface."><meta itemprop="description" content="This project demonstrates how to use World Effects to anchor virtual content to a flat surface."><meta property="og:description" content="This project demonstrates how to use World Effects to anchor virtual content to a flat surface."><meta name="twitter:description" content="This project demonstrates how to use World Effects to anchor virtual content to a flat surface."><script crossorigin="anonymous" src="./external/runtime/runtime.js"></script><script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script><script src="https://cdn.jsdelivr.net/npm/@8thwall/landing-page@1/dist/landing-page.js" crossorigin="anonymous"></script><meta property="og:image" content="https://8thwall.org/studio-world-effects-example/assets/preview.png"></head><body><script src="bundle.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Insert Coin — AR Apps</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+
+        :root{
+            --bg:#0a0a12;
+            --card:rgba(255,255,255,.04);
+            --card-hover:rgba(255,255,255,.08);
+            --accent:#00e5ff;
+            --accent2:#7c4dff;
+            --text:#e0e0e0;
+            --text-dim:rgba(255,255,255,.45);
+        }
+
+        body{
+            font-family:'Rajdhani',sans-serif;
+            background:var(--bg);
+            color:var(--text);
+            min-height:100vh;
+            overflow-x:hidden;
+            position:relative;
+        }
+
+        /* Ambient glow blobs */
+        body::before,body::after{
+            content:'';position:fixed;border-radius:50%;filter:blur(120px);opacity:.25;pointer-events:none;z-index:0;
+        }
+        body::before{width:500px;height:500px;background:var(--accent);top:-120px;left:-100px;}
+        body::after{width:600px;height:600px;background:var(--accent2);bottom:-200px;right:-150px;}
+
+        .page{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:3rem 1.5rem 4rem;}
+
+        /* Grid background */
+        .grid-bg{
+            position:fixed;inset:0;z-index:0;
+            background-image:
+                linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+                linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+            background-size:60px 60px;
+            mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,black 20%,transparent 100%);
+        }
+
+        /* ── Logo ── */
+        .logo-area{text-align:center;margin-bottom:1rem;animation:fadeDown .8s ease-out both;}
+
+        .coin{
+            display:inline-block;width:72px;height:72px;border-radius:50%;
+            background:conic-gradient(from 0deg,var(--accent),var(--accent2),var(--accent));
+            display:flex;align-items:center;justify-content:center;
+            font-family:'Orbitron',sans-serif;font-weight:900;font-size:1.6rem;color:var(--bg);
+            box-shadow:0 0 30px rgba(0,229,255,.3);
+            animation:spin 6s linear infinite;
+            margin:0 auto 1rem;
+        }
+        @keyframes spin{0%{transform:rotateY(0)}100%{transform:rotateY(360deg)}}
+
+        .studio-name{
+            font-family:'Orbitron',sans-serif;
+            font-weight:900;font-size:clamp(1.8rem,5vw,3rem);
+            letter-spacing:.15em;text-transform:uppercase;
+            background:linear-gradient(135deg,var(--accent),var(--accent2));
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+        }
+
+        .tagline{
+            font-weight:300;font-size:1.05rem;letter-spacing:.35em;text-transform:uppercase;
+            color:var(--text-dim);margin-top:.3rem;
+        }
+
+        /* ── Divider ── */
+        .divider{
+            width:120px;height:1px;margin:2rem auto;
+            background:linear-gradient(90deg,transparent,var(--accent),transparent);
+            animation:fadeIn 1s .4s ease-out both;
+        }
+
+        /* ── App Grid ── */
+        .apps{
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+            gap:1.25rem;
+            width:100%;max-width:760px;
+            animation:fadeUp .9s .3s ease-out both;
+        }
+
+        .app-card{
+            position:relative;
+            background:var(--card);
+            border:1px solid rgba(255,255,255,.07);
+            border-radius:16px;
+            padding:2rem 1.5rem;
+            text-align:center;
+            cursor:pointer;
+            transition:all .35s cubic-bezier(.22,1,.36,1);
+            overflow:hidden;
+            text-decoration:none;color:inherit;
+            display:flex;flex-direction:column;align-items:center;gap:.6rem;
+        }
+        .app-card:hover{
+            background:var(--card-hover);
+            border-color:var(--accent);
+            transform:translateY(-6px);
+            box-shadow:0 12px 40px rgba(0,229,255,.12);
+        }
+
+        .app-card .icon{
+            font-size:2.4rem;
+            width:64px;height:64px;border-radius:14px;
+            display:flex;align-items:center;justify-content:center;
+            background:rgba(255,255,255,.05);
+            transition:background .3s;
+        }
+        .app-card:hover .icon{background:rgba(0,229,255,.12);}
+
+        .app-card .label{
+            font-family:'Orbitron',sans-serif;
+            font-weight:700;font-size:.95rem;letter-spacing:.08em;text-transform:uppercase;
+        }
+        .app-card .desc{
+            font-size:.82rem;color:var(--text-dim);line-height:1.4;
+        }
+
+        /* shimmer line on hover */
+        .app-card::after{
+            content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+            background:linear-gradient(90deg,transparent,rgba(255,255,255,.04),transparent);
+            transition:left .6s ease;pointer-events:none;
+        }
+        .app-card:hover::after{left:120%;}
+
+        /* ── Footer ── */
+        .footer{
+            margin-top:auto;padding-top:3rem;
+            font-size:.75rem;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim);
+            animation:fadeIn 1s .6s ease-out both;
+        }
+
+        /* ── Animations ── */
+        @keyframes fadeDown{from{opacity:0;transform:translateY(-30px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    <div class="page">
+
+        <!-- Logo -->
+        <div class="logo-area">
+            <div class="coin">IC</div>
+            <div class="studio-name">Insert Coin</div>
+            <div class="tagline">Augmented Reality Experiences</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- App Grid -->
+        <div class="apps">
+            <a class="app-card" href="webAR/basketball/basketball.html">
+                <div class="icon">🏀</div>
+                <div class="label">Basketball</div>
+                <div class="desc">Shoot hoops in augmented reality</div>
+            </a>
+
+            <a class="app-card" href="webAR/duckhunt.html">
+                <div class="icon">🦆</div>
+                <div class="label">Duck Hunt</div>
+                <div class="desc">Classic arcade action meets AR</div>
+            </a>
+
+             <a class="app-card" href="webAR/Racing/index.html">
+                <div class="icon">🏎️</div>
+                <div class="label">AR Racing</div>
+                <div class="desc">Race on any surface around you</div>
+            </a>
+
+            <a class="app-card" href="webAR/Racing/index.html">
+                <div class="icon">⛳</div>
+                <div class="label">AR Golf</div>
+                <div class="desc">Place a Golf Course and Try for Par or Better!</div>
+            </a>
+        </div>
+
+        <div class="footer">© 2026 Insert Coin</div>
+    </div>
+</body>
+</html>
