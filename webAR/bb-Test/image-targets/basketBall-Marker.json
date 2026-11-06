@@ -1,0 +1,23 @@
+{
+  "type": "PLANAR",
+  "properties": {
+    "top": 0,
+    "left": 276,
+    "width": 1654,
+    "height": 2205,
+    "isRotated": false,
+    "originalWidth": 2205,
+    "originalHeight": 2205
+  },
+  "imagePath": "image-targets/basketBall-Marker_luminance.png",
+  "metadata": null,
+  "name": "basketBall-Marker",
+  "resources": {
+    "originalImage": "basketBall-Marker_original.png",
+    "croppedImage": "basketBall-Marker_cropped.png",
+    "thumbnailImage": "basketBall-Marker_thumbnail.png",
+    "luminanceImage": "basketBall-Marker_luminance.png"
+  },
+  "created": 1793985096976,
+  "updated": 1793985103644
+}
